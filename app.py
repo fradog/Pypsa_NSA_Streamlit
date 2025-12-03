@@ -72,17 +72,29 @@ demand_profile = pd.Series(100.0, index=n.snapshots)
 n.add("Load", "National Load", bus="Southwest Bus", p_set=demand_profile)
 
 n.add("Generator", "National Solar",
-      bus="Southwest Bus", capital_cost=10, marginal_cost=0, p_nom_max=100000,
-      p_nom_min=100, # FORCING MINIMUM BUILD
+      bus="Southwest Bus", capital_cost=500, marginal_cost=10, p_nom_max=100000,
+      p_nom_min=100, # FORCING MINIMUM BUILD OF 100 MW
       p_max_pu=hourly_capacity_factor, 
       carrier="solar")
 
-# Battery for storage
+# --- ADD THE BATTERY BACK IN ---
 n.add("StorageUnit", "National Battery",
-      bus="Southwest Bus", capital_cost=30, marginal_cost=0, p_nom_max=50000,
-      p_nom_min=10, 
-      max_hours=6, carrier="battery")
+      bus="Southwest Bus", 
+      capital_cost=300, # e.g., $300/kWh 
+      marginal_cost=0, 
+      p_nom_max=50000,
+      p_nom_min=0, # Let the optimizer decide how much power capacity to build
+      max_hours=6, # e.g., 6 hours duration
+      carrier="battery")
+# --------------------------------
 
+# Add a load shedder just for mathematical feasibility of the dispatch problem
+n.add("Generator", "Load Shedding",
+      bus="Southwest Bus",
+      carrier="shedding",
+      p_nom_extendable=True,
+      marginal_cost=100000 # Cost of unserved energy (blackout)
+      )
 
 # --- 3. Optimize the network ---
 st.header("Running Optimization (GLPK Solver)...")
