@@ -100,7 +100,7 @@ n.add("Generator", "Load Shedding",
 st.header("Running Optimization (GLPK Solver)...")
 with st.spinner('Solving the linear optimization problem. This may take a moment...'):
     try:
-        n.optimize(solver_name="glpk")
+        n.optimize(solver_name="cbc")
         st.success(f"Optimization successful: {n.model.status}")
     except Exception as e:
         st.error(f"Optimization failed: {e}")
