@@ -26,7 +26,7 @@ n.set_snapshots(hours_in_year)
 
 # 1b. Load the NREL GHI data and process it
 try:
-    file_path = 'nrel_data/nrel_ghi_data_2024.csv'
+    file_path = 'nrel_data/nsrdb_v4_2024.csv'
     if os.path.exists(file_path):
         st.info(f"Loading NREL data from {file_path}")
         ghi_data = pd.read_csv(file_path)
