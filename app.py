@@ -16,17 +16,17 @@ st.set_page_config(page_title="PyPSA National Solar Array Model", layout="wide")
 
 st.title("National Solar Array Optimization Results")
 
-# --- 1. Network Setup (Using 2024 since data is available for that year) ---
+# --- 1. Network Setup ---
+# Use 2013 (non-leap year) for standard 8760 hour TMY modeling
 n = pypsa.Network()
-hours_in_year = pd.date_range(start="2024-01-01T00:00",
-                              end="2024-12-31T23:00",
+hours_in_year = pd.date_range(start="2013-01-01T00:00",
+                              end="2013-12-31T23:00",
                               freq="h") 
 n.set_snapshots(hours_in_year)
 
 # 1b. Load the NREL GHI data and process it
 try:
-    # Ensure this path matches your GitHub repository structure
-    file_path = 'nrel_data/nsrdb_v4_2024.csv'
+    file_path = 'nrel_data/nrel_ghi_data_2024.csv'
     if os.path.exists(file_path):
         st.info(f"Loading NREL data from {file_path}")
         ghi_data = pd.read_csv(file_path)
@@ -40,18 +40,20 @@ try:
         hourly_capacity_factor = (ghi_data['GHI'] / REFERENCE_IRRADIANCE) * SYSTEM_EFFICIENCY
         hourly_capacity_factor = hourly_capacity_factor.clip(upper=1.0).fillna(0)
 
-        # Shift index from 00:30:00 to 00:00:00 and trim leap day
+        # Shift index from 00:30:00 to 00:00:00
         hourly_capacity_factor.index = hourly_capacity_factor.index - pd.Timedelta(minutes=30)
         
-        if len(hourly_capacity_factor) > 8760:
+        # --- FIX: Ensure leap day is dropped BEFORE reindexing to snapshots ---
+        if len(hourly_capacity_factor) == 8784:
+            st.warning("Leap year data detected. Removing February 29th for 8760 hour TMY alignment.")
             hourly_capacity_factor = hourly_capacity_factor[~((hourly_capacity_factor.index.month == 2) & (hourly_capacity_factor.index.day == 29))]
         
-        # Reindex to final snapshots to ensure perfect alignment
-        hourly_capacity_factor = hourly_capacity_factor.reindex(n.snapshots)
+        # Now replace the years (2024) with the PyPSA network's year (2013)
+        hourly_capacity_factor.index = n.snapshots
         
     else:
         st.error(f"Data file not found at {file_path}. Using placeholder data.")
-        # Fallback random data (same as before)
+        # ... (Fallback random data handling code remains the same) ...
         np.random.seed(42)
         random_cf = pd.Series(np.random.rand(len(n.snapshots)), index=n.snapshots)
         random_cf[n.snapshots.hour < 6] = 0
