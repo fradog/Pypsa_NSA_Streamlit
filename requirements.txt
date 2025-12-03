@@ -3,3 +3,4 @@ pypsa
 pandas
 numpy
 matplotlib
+pulp
