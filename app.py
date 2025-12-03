@@ -8,136 +8,52 @@ import streamlit as st
 import pypsa
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import os # Added for file path management
 
-# Set Streamlit page configuration
-st.set_page_config(page_title="PyPSA National Solar Array Model", layout="wide")
+st.title("PyPSA Constraint Isolation Test")
 
-st.title("National Solar Array Optimization Results")
-
-# --- 1. Network Setup ---
-# Use 2013 (non-leap year) for standard 8760 hour TMY modeling
+# 1. Setup a single snapshot network
 n = pypsa.Network()
-hours_in_year = pd.date_range(start="2013-01-01T00:00",
-                              end="2013-12-31T23:00",
-                              freq="h") 
-n.set_snapshots(hours_in_year)
+snapshots = pd.to_datetime(['2024-01-01 00:00'])
+n.set_snapshots(snapshots)
 
-# 1b. Load the NREL GHI data and process it
-try:
-    file_path = 'nrel_data/nsrdb_v4_2024.csv'
-    if os.path.exists(file_path):
-        st.info(f"Loading NREL data from {file_path}")
-        ghi_data = pd.read_csv(file_path)
-        ghi_data.columns = ghi_data.columns.str.strip()
-        ghi_data.index = pd.to_datetime(ghi_data[['Year', 'Month', 'Day', 'Hour', 'Minute']])
-        ghi_data['GHI'] = pd.to_numeric(ghi_data['GHI'], errors='coerce') 
-        
-        REFERENCE_IRRADIANCE = 1000 # W/m^2
-        SYSTEM_EFFICIENCY = 0.85    
+# 2. Add components: Demand 100 MW
+n.add("Bus", "Southwest Bus")
+n.add("Load", "National Load", bus="Southwest Bus", p_set=100.0) # 100 MW demand
 
-        hourly_capacity_factor = (ghi_data['GHI'] / REFERENCE_IRRADIANCE) * SYSTEM_EFFICIENCY
-        hourly_capacity_factor = hourly_capacity_factor.clip(upper=1.0).fillna(0)
-
-        # Shift index from 00:30:00 to 00:00:00
-        hourly_capacity_factor.index = hourly_capacity_factor.index - pd.Timedelta(minutes=30)
-        
-        # --- FIX: Ensure leap day is dropped BEFORE reindexing to snapshots ---
-        if len(hourly_capacity_factor) == 8784:
-            st.warning("Leap year data detected. Removing February 29th for 8760 hour TMY alignment.")
-            hourly_capacity_factor = hourly_capacity_factor[~((hourly_capacity_factor.index.month == 2) & (hourly_capacity_factor.index.day == 29))]
-        
-        # Now replace the years (2024) with the PyPSA network's year (2013)
-        hourly_capacity_factor.index = n.snapshots
-        # ... (inside the data loading 'try' block, after all cleaning/alignment) ...
-
-        # Calculate the annual average capacity factor for display/verification
-        annual_capacity_factor = hourly_capacity_factor.mean() * 100
-        st.metric("Annual Average Capacity Factor (from NREL Data)", f"{annual_capacity_factor:.2f} %")
-
-    else:
-        st.error(f"Data file not found at {file_path}. Using placeholder data.")
-        # ... (Fallback random data handling code remains the same) ...
-        np.random.seed(42)
-        random_cf = pd.Series(np.random.rand(len(n.snapshots)), index=n.snapshots)
-        random_cf[n.snapshots.hour < 6] = 0
-        random_cf[random_cf.index.hour > 18] = 0
-        hourly_capacity_factor = random_cf
-
-except Exception as e:
-    st.error(f"An error occurred during data loading: {e}")
-    # Fallback to empty series to prevent script crash
-    hourly_capacity_factor = pd.Series(0.0, index=n.snapshots)
-
-
-# --- 2. Add Components (Using aggressive costs to force investment) ---
-n.add("Bus", "Southwest Bus", carrier="AC")
-demand_profile = pd.Series(100.0, index=n.snapshots)
-n.add("Load", "National Load", bus="Southwest Bus", p_set=demand_profile)
-
-n.add("Generator", "National Solar",
-      bus="Southwest Bus", capital_cost=500, marginal_cost=10, p_nom_max=100000000,
-      p_nom_min=100000, # FORCING MINIMUM BUILD OF 100 MW
-      p_max_pu=hourly_capacity_factor, 
-      carrier="solar")
-
-# --- ADD THE BATTERY BACK IN ---
-n.add("StorageUnit", "National Battery",
+# 3. Add a generator with a forced minimum capacity build
+# p_max_pu is 1.0 (always available), capital_cost is low
+n.add("Generator", "Test Generator",
       bus="Southwest Bus", 
-      capital_cost=300, # e.g., $300/kWh 
+      capital_cost=10, 
       marginal_cost=0, 
-      p_nom_max=50000,
-      p_nom_min=0, # Let the optimizer decide how much power capacity to build
-      max_hours=6, # e.g., 6 hours duration
-      carrier="battery")
-# --------------------------------
+      p_nom_min=100.0, # <--- MUST BUILD 100 MW
+      p_max_pu=pd.Series(1.0, index=snapshots), 
+      carrier="test")
 
-# Add a load shedder just for mathematical feasibility of the dispatch problem
+# 4. Add load shedding for feasibility backup
 n.add("Generator", "Load Shedding",
       bus="Southwest Bus",
-      carrier="shedding",
       p_nom_extendable=True,
-      marginal_cost=100000 # Cost of unserved energy (blackout)
+      marginal_cost=100000 
       )
 
-# --- 3. Optimize the network ---
-st.header("Running Optimization (CBC Solver)...")
-with st.spinner('Solving the linear optimization problem. This may take a moment...'):
-    try:
-        n.optimize(solver_name="cbc")
-        st.success(f"Optimization successful: {n.model.status}")
-    except Exception as e:
-        st.error(f"Optimization failed: {e}")
+# 5. Optimize
+st.header("Running Optimization (GLPK/CBC)...")
+try:
+    n.optimize(solver_name="cbc") # Using cbc as it installed previously
+    st.success(f"Optimization successful: {n.model.status}")
+except Exception as e:
+    st.error(f"Optimization failed: {e}")
 
-
-# --- 4. Analyze results and display in Streamlit ---
-st.header("Optimal Capacities (MW)")
-
-if n.model.status == 'ok' or n.model.status == 'warning':
-    solar_capacity = n.generators['p_nom_opt']["National Solar"]
+# 6. Display results
+if n.model.status == 'ok':
+    test_capacity = n.generators['p_nom_opt']["Test Generator"]
+    shedding_capacity = n.generators['p_nom_opt']["Load Shedding"]
     
-    st.metric("Optimal Solar Capacity", f"{solar_capacity:.2f} MW")
-
-    # --- 5. Plotting using Streamlit's built-in chart functionality ---
-    st.header("Energy Balance Time Series (First Week)")
-
-    try:
-        generation_p = n.generators_t.p
-        load_p = n.loads_t.p.sum(axis=1)
-
-        plot_data = pd.DataFrame({
-            'Solar': generation_p.get('National Solar', 0),
-            'Demand': load_p
-        })
-        
-        # Display only the first week for a readable plot in Streamlit
-        st.line_chart(plot_data.head(24 * 7)) 
-
-    except Exception as e:
-        st.error(f"Plotting error: {e}")
-        st.write("Check if optimization was successful.")
-
+    st.header("Optimal Capacities (MW)")
+    st.metric("Test Generator Capacity (Expected 100 MW)", f"{test_capacity:.2f} MW")
+    st.metric("Load Shedding Capacity (Expected 0 MW)", f"{shedding_capacity:.2f} MW")
 else:
-    st.warning("Cannot display results because optimization did not return an 'ok' status.")
+    st.warning("Solver failed to return OK status.")
+
 
