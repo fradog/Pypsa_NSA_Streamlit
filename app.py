@@ -97,7 +97,7 @@ n.add("Generator", "Load Shedding",
       )
 
 # --- 3. Optimize the network ---
-st.header("Running Optimization (GLPK Solver)...")
+st.header("Running Optimization (CBC Solver)...")
 with st.spinner('Solving the linear optimization problem. This may take a moment...'):
     try:
         n.optimize(solver_name="cbc")
