@@ -50,7 +50,12 @@ try:
         
         # Now replace the years (2024) with the PyPSA network's year (2013)
         hourly_capacity_factor.index = n.snapshots
-        
+        # ... (inside the data loading 'try' block, after all cleaning/alignment) ...
+
+        # Calculate the annual average capacity factor for display/verification
+        annual_capacity_factor = hourly_capacity_factor.mean() * 100
+        st.metric("Annual Average Capacity Factor (from NREL Data)", f"{annual_capacity_factor:.2f} %")
+
     else:
         st.error(f"Data file not found at {file_path}. Using placeholder data.")
         # ... (Fallback random data handling code remains the same) ...
