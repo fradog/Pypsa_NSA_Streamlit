@@ -77,6 +77,12 @@ n.add("Generator", "National Solar",
       p_max_pu=hourly_capacity_factor, 
       carrier="solar")
 
+# Battery for storage
+n.add("StorageUnit", "National Battery",
+      bus="Southwest Bus", capital_cost=30, marginal_cost=0, p_nom_max=50000,
+      p_nom_min=10, 
+      max_hours=6, carrier="battery")
+
 
 # --- 3. Optimize the network ---
 st.header("Running Optimization (GLPK Solver)...")
