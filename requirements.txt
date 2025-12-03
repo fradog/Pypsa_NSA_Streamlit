@@ -1,0 +1,6 @@
+streamlit
+pypsa
+pandas
+numpy
+matplotlib
+glpk
