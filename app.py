@@ -77,8 +77,8 @@ demand_profile = pd.Series(100.0, index=n.snapshots)
 n.add("Load", "National Load", bus="Southwest Bus", p_set=demand_profile)
 
 n.add("Generator", "National Solar",
-      bus="Southwest Bus", capital_cost=500, marginal_cost=10, p_nom_max=100000,
-      p_nom_min=100, # FORCING MINIMUM BUILD OF 100 MW
+      bus="Southwest Bus", capital_cost=500, marginal_cost=10, p_nom_max=100000000,
+      p_nom_min=100000, # FORCING MINIMUM BUILD OF 100 MW
       p_max_pu=hourly_capacity_factor, 
       carrier="solar")
 
